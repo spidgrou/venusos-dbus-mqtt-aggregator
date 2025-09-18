@@ -4,7 +4,6 @@
 set -e
 
 # --- Variables ---
-# Replace 'YOUR_USERNAME' and 'REPO_NAME' with your GitHub details.
 GITHUB_USER="spidgrou"
 GITHUB_REPO="venusos-dbus-mqtt-aggregator"
 SCRIPT_NAME="dbus_to_mqtt_bridge.py"
