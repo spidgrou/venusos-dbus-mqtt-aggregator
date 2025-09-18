@@ -4,6 +4,7 @@
 set -e
 
 # --- Variables ---
+# Replace 'YOUR_USERNAME' and 'REPO_NAME' with your GitHub details.
 GITHUB_USER="spidgrou"
 GITHUB_REPO="venusos-dbus-mqtt-aggregator"
 SCRIPT_NAME="dbus_to_mqtt_bridge.py"
@@ -92,13 +93,18 @@ if [ ! -L "/service/$SERVICE_NAME" ]; then
 fi
 echo "Service activated."
 
-echo "[6/6] Cleaning up and restarting the service to apply all changes..."
-# Use -t to restart (terminate and then start) the service cleanly
+# --- MODIFICA QUI ---
+# Aggiunta una pausa per dare tempo a daemontools di avviare il servizio
+echo "[6/6] Waiting for the service to be recognized..."
+sleep 5
+# --- FINE MODIFICA ---
+
+# Ora il riavvio dovrebbe funzionare
 svc -t /service/$SERVICE_NAME
 
 echo "--- Installation Complete! ---"
 echo
-echo "The service is now running."
+echo "The service has been started."
 echo "To verify, wait about 30 seconds, then run this command:"
 echo "svstat /service/dbus-mqtt-bridge"
 echo "You should see a message starting with 'up'."
