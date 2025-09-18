@@ -1,4 +1,3 @@
-root@cerbosgx:~# curl -sSL https://raw.githubusercontent.com/spidgrou/venusos-dbus-mqtt-aggregator/main/install.sh | bash
 --- Starting D-Bus to MQTT Bridge Service Installation ---
 [1/6] Installing dependencies (python3-paho-mqtt)...
 Dependencies installed.
