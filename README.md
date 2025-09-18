@@ -35,7 +35,7 @@ Installation has been made as simple as possible. You only need to run a single 
 2.  Copy the entire command below, paste it into the terminal, and press Enter. The script will handle everything else automatically.
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/spidgrou/venusos-dbus-mqtt-aggregator/main/install.sh |
+curl -sSL https://raw.githubusercontent.com/spidgrou/venusos-dbus-mqtt-aggregator/main/install.sh | bash
 ```
 The installation script will take care of everything:
 *   Installing necessary dependencies.
