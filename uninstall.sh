@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Abilita l'uscita immediata in caso di errore
+# Exit immediately if a command exits with a non-zero status.
 set -e
 
-# --- Variabili ---
+# --- Variables ---
 SERVICE_NAME="dbus-mqtt-bridge"
 SCRIPT_DIR="/data/$SERVICE_NAME"
 SERVICE_DIR="/data/service/$SERVICE_NAME"
@@ -11,63 +11,60 @@ SERVICE_LINK="/service/$SERVICE_NAME"
 RC_LOCAL="/data/rc.local"
 SETUP_SERVICES="/data/setup-services.sh"
 
-# --- Inizio script ---
-echo "--- Inizio Disinstallazione Servizio D-Bus to MQTT ---"
+# --- Start of Script ---
+echo "--- Starting D-Bus to MQTT Bridge Service Uninstallation ---"
 
-# 1. Controlla di essere eseguito come root
+# 1. Check if running as root
 if [ "$(id -u)" -ne 0 ]; then
-    echo "Errore: Questo script deve essere eseguito come utente root."
+    echo "Error: This script must be run as the root user."
     exit 1
 fi
 
-# 2. Ferma e disabilita il servizio
-echo "[1/4] Arresto e disabilitazione del servizio..."
-# Rimuove il link per disattivare il servizio
+# 2. Stop and disable the service
+echo "[1/4] Stopping and disabling the service..."
+# Remove the symlink to deactivate the service
 if [ -L "$SERVICE_LINK" ]; then
     rm "$SERVICE_LINK"
-    echo "Link del servizio rimosso."
+    echo "Service link removed."
 fi
-# Attende un paio di secondi per assicurarsi che il gestore se ne accorga
+# Wait a moment for the service manager to recognize the change
 sleep 2
 
-# 3. Rimuove i file del servizio e dello script principale
-echo "[2/4] Rimozione dei file del programma..."
+# 3. Remove the main script and service files
+echo "[2/4] Removing program files..."
 if [ -d "$SCRIPT_DIR" ]; then
     rm -rf "$SCRIPT_DIR"
-    echo "Directory del programma ($SCRIPT_DIR) rimossa."
+    echo "Program directory ($SCRIPT_DIR) removed."
 fi
 if [ -d "$SERVICE_DIR" ]; then
     rm -rf "$SERVICE_DIR"
-    echo "Directory del servizio ($SERVICE_DIR) rimossa."
+    echo "Service directory ($SERVICE_DIR) removed."
 fi
 
-# 4. Pulisce la configurazione di avvio automatico (rc.local)
-# Questo passaggio è delicato: rimuoviamo solo le nostre righe, se possibile.
-# Per semplicità e sicurezza, diamo solo un avviso, ma un utente avanzato potrebbe modificarlo.
-# In questo caso, rimuoviamo i file che abbiamo creato noi.
-echo "[3/4] Pulizia della configurazione di avvio..."
+# 4. Clean up the auto-start configuration
+echo "[3/4] Cleaning up auto-start configuration..."
 if [ -f "$SETUP_SERVICES" ]; then
     rm "$SETUP_SERVICES"
-    echo "Script di setup ($SETUP_SERVICES) rimosso."
+    echo "Setup script ($SETUP_SERVICES) removed."
 fi
 if [ -f "$RC_LOCAL" ]; then
-    # Controlla se rc.local contiene solo la nostra riga, in caso affermativo, lo rimuove.
+    # To be safe, only remove rc.local if it only contains our setup line.
     if grep -q "$SETUP_SERVICES" "$RC_LOCAL" && [ "$(wc -l < "$RC_LOCAL")" -le 3 ]; then
         rm "$RC_LOCAL"
-        echo "File di avvio ($RC_LOCAL) rimosso."
+        echo "Startup file ($RC_LOCAL) removed."
     else
-        echo "ATTENZIONE: Il file $RC_LOCAL sembra contenere altre modifiche."
-        echo "Per favore, modificalo manualmente e rimuovi la riga che esegue: $SETUP_SERVICES"
+        echo "WARNING: $RC_LOCAL appears to contain other custom modifications."
+        echo "Please edit it manually and remove the line that runs: $SETUP_SERVICES"
     fi
 fi
 
-# 5. Rimuove i log (opzionale, ma pulito)
-echo "[4/4] Rimozione dei log..."
-# Il logger di VenusOS per i servizi daemontools non crea una cartella separata,
-# quindi non c'è nulla da rimuovere qui in modo sicuro. I log rimarranno
-# nel file di sistema principale /var/log/messages.
-echo "Nessun file di log separato da rimuovere."
+# 5. Remove logs (optional, but clean)
+echo "[4/4] Removing logs..."
+# The Venus OS logger for daemontools services does not create a separate log directory.
+# Logs are sent to the main system log (/var/log/messages).
+# There is nothing to safely remove here.
+echo "No separate log files to remove."
 
-echo "--- Disinstallazione Completata! ---"
-echo "Il servizio e tutti i suoi file sono stati rimossi."
-echo "Potrebbe essere necessario un riavvio per finalizzare la pulizia."
+echo "--- Uninstallation Complete! ---"
+echo "The service and all its files have been removed."
+echo "A reboot may be useful to finalize the cleanup."
