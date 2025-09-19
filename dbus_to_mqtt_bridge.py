@@ -120,7 +120,6 @@ class DbusMqttBridge:
 
     def run(self):
         self._update_data(); self._publish_to_mqtt()
-        # These specific topics are kept for compatibility and utility
         self.mqtt_client.publish(f"R/{self.system_id}/system/0/Serial", self.system_id, retain=True)
         self.mqtt_client.publish(f"Y/serial", self.system_id, retain=True)
         return True
