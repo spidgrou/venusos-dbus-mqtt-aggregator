@@ -18,6 +18,8 @@ It was created as a high-performance alternative to Node-RED to reduce resource 
 *   **Stable and Lightweight:** Designed for very low CPU and RAM consumption.
 *   **Automatic Startup:** Thanks to a robust startup system, the service starts automatically on every reboot.
 
+![Immagine 2025-09-19 120504](https://github.com/user-attachments/assets/7cbbcea9-4c55-4b11-8a20-a881984aa6c9)
+
 ## Prerequisites
 
 Before you begin, ensure you have:
