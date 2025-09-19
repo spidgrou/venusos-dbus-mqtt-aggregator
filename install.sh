@@ -99,5 +99,3 @@ echo "To verify, wait about 30 seconds, then run this command:"
 echo "svstat /service/dbus-mqtt-bridge"
 echo "You should see a message starting with 'up'."
 
-
-**Il tuo progetto è ora completo e pronto per essere condiviso.**
