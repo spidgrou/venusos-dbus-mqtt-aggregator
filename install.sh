@@ -15,6 +15,7 @@ SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/main/$SC
 # Installation paths on the Cerbo GX
 DEST_DIR="/data/$SERVICE_NAME"
 SERVICE_DIR="/data/service/$SERVICE_NAME"
+LOG_DIR="/var/log/$SERVICE_NAME" # Directory per i log di multilog
 
 # --- Start of Script ---
 echo "--- Starting D-Bus to MQTT Bridge Service Installation ---"
@@ -45,17 +46,20 @@ fi
 # 4. Create the service configuration (for daemontools)
 echo "[3/5] Configuring the startup service..."
 mkdir -p "$SERVICE_DIR"
+# --- MODIFICA INIZIA QUI ---
+# Ora usiamo multilog per un logging robusto, a prova di riavvio del logger di sistema.
 cat <<EOF > "$SERVICE_DIR/run"
 #!/bin/sh
-# Execute the python script and pipe its output to the system logger
-exec $DEST_DIR/$SCRIPT_NAME 2>&1 | logger -t $SERVICE_NAME
+# Execute the python script and pipe its output to multilog for robust logging.
+exec /data/dbus-mqtt-bridge/dbus_to_mqtt_bridge.py 2>&1 | multilog t s250000 n10 /var/log/dbus-mqtt-bridge
 EOF
+# --- MODIFICA FINISCE QUI ---
 chmod +x "$SERVICE_DIR/run"
 echo "Service configured."
 
 # 5. Create the scripts for persistent startup (rc.local method)
 echo "[4/5] Setting up persistent auto-start..."
-# Script #1: The permanent setup script
+# (Il contenuto di questi script rimane invariato)
 cat <<'EOF' > /data/setup-services.sh
 #!/bin/bash
 echo "Executing setup-services.sh script..." | logger -t setup-services
@@ -76,7 +80,6 @@ fi
 EOF
 chmod +x /data/setup-services.sh
 
-# Script #2: The one-shot trigger (rc.local)
 cat <<'EOF' > /data/rc.local
 #!/bin/bash
 # This script will run our permanent setup script in the background.
@@ -90,12 +93,13 @@ echo "[5/5] Activating the service..."
 if [ ! -L "/service/$SERVICE_NAME" ]; then
     ln -s "$SERVICE_DIR" "/service/$SERVICE_NAME"
 fi
-# The service will be started automatically by daemontools within a few seconds.
 
 echo "--- Installation Complete! ---"
 echo
 echo "The service has been activated and will start shortly."
 echo "To verify, wait about 30 seconds, then run this command:"
 echo "svstat /service/dbus-mqtt-bridge"
-echo "You should see a message starting with 'up'."
-
+echo
+echo "IMPORTANT: Logs are now located in a dedicated directory."
+echo "To view logs, use this command:"
+echo "tail -f /var/log/dbus-mqtt-bridge/current | tai64nlocal"
