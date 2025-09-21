@@ -61,11 +61,11 @@ svstat /service/dbus-mqtt-bridge
 /service/dbus-mqtt-bridge: up (pid 1234) 45 seconds
 ```
 
-#### 2. Check the Logs (if something is wrong)
+#### 2. Check the Logs
 
-If you want to see the startup messages or diagnose any issues, you can view the logs:
+This service uses a dedicated, robust logging system. To view the logs (either for startup messages or to diagnose issues), use the following command:
 ```bash
-tail -f /var/log/messages | grep dbus-mqtt-bridge
+tail -f /var/log/dbus-mqtt-bridge/current | tai64nlocal
 ```
 
 ## Configuration
