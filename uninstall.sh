@@ -22,12 +22,10 @@ fi
 
 # 2. Stop and disable the service
 echo "[1/4] Stopping and disabling the service..."
-# Remove the symlink to deactivate the service
 if [ -L "$SERVICE_LINK" ]; then
     rm "$SERVICE_LINK"
     echo "Service link removed."
 fi
-# Wait a moment for the service manager to recognize the change
 sleep 2
 
 # 3. Remove the main script and service files
@@ -41,29 +39,32 @@ if [ -d "$SERVICE_DIR" ]; then
     echo "Service directory ($SERVICE_DIR) removed."
 fi
 
-# 4. Clean up the auto-start configuration
+# 4. Clean up the auto-start configuration (SAFE METHOD)
 echo "[3/4] Cleaning up auto-start configuration..."
+# First, safely remove our permanent setup script.
 if [ -f "$SETUP_SERVICES" ]; then
     rm "$SETUP_SERVICES"
     echo "Setup script ($SETUP_SERVICES) removed."
 fi
-if [ -f "$RC_LOCAL" ]; then
-    # To be safe, only remove rc.local if it only contains our setup line.
-    if grep -q "$SETUP_SERVICES" "$RC_LOCAL" && [ "$(wc -l < "$RC_LOCAL")" -le 3 ]; then
-        rm "$RC_LOCAL"
-        echo "Startup file ($RC_LOCAL) removed."
-    else
-        echo "WARNING: $RC_LOCAL appears to contain other custom modifications."
-        echo "Please edit it manually and remove the line that runs: $SETUP_SERVICES"
-    fi
-fi
 
-# 5. Remove logs (optional, but clean)
+# --- MODIFICA CHIAVE: Rimozione sicura della riga da rc.local ---
+# Now, carefully edit rc.local to remove ONLY our startup line.
+# This prevents breaking other custom scripts.
+if [ -f "$RC_LOCAL" ]; then
+    # Use sed to perform an in-place deletion ('-i') of any line ('d')
+    # containing the name of our setup script.
+    sed -i '/setup-services.sh/d' "$RC_LOCAL"
+    echo "Startup entry safely removed from $RC_LOCAL."
+fi
+# --- FINE MODIFICA ---
+
+# 5. Remove logs
 echo "[4/4] Removing logs..."
-# The Venus OS logger for daemontools services does not create a separate log directory.
-# Logs are sent to the main system log (/var/log/messages).
-# There is nothing to safely remove here.
-echo "No separate log files to remove."
+# The service uses a dedicated log directory managed by multilog.
+if [ -d "/var/log/$SERVICE_NAME" ]; then
+    rm -rf "/var/log/$SERVICE_NAME"
+    echo "Log directory (/var/log/$SERVICE_NAME) removed."
+fi
 
 echo "--- Uninstallation Complete! ---"
 echo "The service and all its files have been removed."
