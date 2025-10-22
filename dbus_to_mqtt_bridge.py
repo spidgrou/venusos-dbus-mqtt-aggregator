@@ -4,6 +4,7 @@ import sys, os, platform, logging, time, dbus, traceback
 from gi.repository import GLib
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import CallbackAPIVersion
+# --- MODIFICA 1: Usiamo i nomi corretti e standard per i tipi D-Bus ---
 from dbus.types import Array as dbusArray, Int16 as dbusInt16, UInt16 as dbusUInt16, \
     Int32 as dbusInt32, UInt32 as dbusUInt32, Double as dbusDouble, String as dbusString, \
     Byte as dbusByte
@@ -26,7 +27,7 @@ class DbusMqttBridge:
     }
 
     def __init__(self):
-        logging.info("--- EXECUTING SCRIPT VERSION 19.0 ---")
+        logging.info("--- EXECUTING SCRIPT VERSION 17.2 ---")
         logging.info("Waiting 15 seconds for all services to start...")
         time.sleep(15)
         self._dbus_conn = dbus.SystemBus()
@@ -58,6 +59,7 @@ class DbusMqttBridge:
     def _on_mqtt_disconnect(self, client, userdata, rc):
         logging.warning(f"Disconnected from MQTT. Code: {rc}")
 
+    # --- MODIFICA 2: Controllo dei tipi aggiornato con i nomi corretti ---
     def _get_dbus_value(self, service, path, default=None):
         try:
             val = self._dbus_conn.get_object(service, path).GetValue()
@@ -76,42 +78,27 @@ class DbusMqttBridge:
     def _find_services(self, is_rescan=False):
         bus_object = self._dbus_conn.get_object("org.freedesktop.DBus", "/org/freedesktop/DBus")
         service_names = bus_object.ListNames(dbus_interface="org.freedesktop.DBus")
-        
-        # --- MODIFICA CHIAVE: Logica di ricerca batteria basata sulla configurazione di sistema ---
-        # Chiediamo al sistema qual è il monitor batteria attivo scelto dall'utente
-        active_battery_service = self._get_dbus_value('com.victronenergy.system', '/ActiveBatteryService')
-        
-        # Controlliamo se il servizio attivo è cambiato o se lo stiamo scoprendo per la prima volta
-        if active_battery_service and 'com.victronenergy.battery' in active_battery_service:
-            if self._dbus_paths['battery']['service'] != active_battery_service:
-                self._dbus_paths['battery']['service'] = active_battery_service
-                logging.info(f"System's Active Battery Monitor selected: '{self._get_display_name(active_battery_service)}' ({active_battery_service.split('.')[-1]})")
-        else:
-            # Se nessun servizio è attivo, ci assicuriamo che il nostro sia None
-            if self._dbus_paths['battery']['service'] is not None:
-                logging.warning("No active battery monitor selected in system settings. Clearing battery monitor.")
-                self._dbus_paths['battery']['service'] = None
-        # --- FINE MODIFICA ---
-        
         known_chargers = [c['service'] for c in self._dbus_paths['solarchargers']]
         for service in service_names:
             service = str(service)
-            if service.startswith('com.victronenergy.solarcharger') and service not in known_chargers:
+            if service.startswith('com.victronenergy.battery') and not self._dbus_paths['battery']['service']:
+                self._dbus_paths['battery']['service'] = service; logging.info(f"Found Battery: '{self._get_display_name(service)}' ({service.split('.')[-1]})")
+            elif service.startswith('com.victronenergy.solarcharger') and service not in known_chargers:
                 self._dbus_paths['solarchargers'].append({'service': service}); log_prefix = "Detected new Solar Charger:" if is_rescan else "Found Solar Charger:"; logging.info(f"{log_prefix} '{self._get_display_name(service)}' ({service.split('.')[-1]})")
             elif service.startswith('com.victronenergy.vebus') and not self._dbus_paths['vebus']['service']:
                 self._dbus_paths['vebus']['service'] = service; log_prefix = "Detected new VE.Bus device:" if is_rescan else "Found VE.Bus device:"; logging.info(f"{log_prefix} '{self._get_display_name(service)}' ({service.split('.')[-1]})")
-
         if not is_rescan:
-            if not self._dbus_paths['battery']['service']: logging.warning("WARNING: No active battery monitor has been selected by the user in the GX settings.")
+            if not self._dbus_paths['battery']['service']: logging.warning("WARNING: No battery monitor found.")
             if not self._dbus_paths['solarchargers']: logging.warning("WARNING: No solar chargers found.")
             if not self._dbus_paths['vebus']['service']: logging.warning("WARNING: No VE.Bus device (MultiPlus) found.")
 
     def rescan_for_new_devices(self):
+        logging.info("--> Performing periodic device scan...")
         self._find_services(is_rescan=True)
         return True
     
-    # ... il resto del codice è identico e non necessita modifiche ...
     def _update_data(self):
+        # ... (il resto del codice non ha bisogno di modifiche) ...
         bat_service = self._dbus_paths['battery']['service']
         if bat_service: self.data['battery_current'] = self._get_dbus_value(bat_service, '/Dc/0/Current'); self.data['battery_power'] = self._get_dbus_value(bat_service, '/Dc/0/Power'); self.data['battery_voltage'] = self._get_dbus_value(bat_service, '/Dc/0/Voltage'); self.data['battery_soc'] = self._get_dbus_value(bat_service, '/Soc'); self.data['battery_consumed_ah'] = self._get_dbus_value(bat_service, '/ConsumedAmphours'); self.data['battery_aux_voltage'] = self._get_dbus_value(bat_service, '/Dc/1/Voltage')
         sys_service = self._dbus_paths['system']['service']
@@ -127,6 +114,7 @@ class DbusMqttBridge:
             state_code = self._get_dbus_value(vebus_service, '/State')
             if state_code is not None:
                 self.data['vebus_state_text'] = self.VEBUS_STATE_MAP.get(state_code, f'Unknown ({state_code})')
+
     def _publish_to_mqtt(self):
         if not self.mqtt_client.is_connected(): logging.warning("MQTT client disconnected, skipping publication."); return
         topic_map = {'battery_current': 'batteryMonitor/Current', 'battery_power': 'batteryMonitor/Power', 'battery_voltage': 'batteryMonitor/Voltage', 'battery_soc': 'batteryMonitor/SOC', 'battery_consumed_ah': 'batteryMonitor/UsedAh', 'battery_aux_voltage': 'batteryMonitor/VoltageAUX', 'solar_power': 'solar/totalPower', 'solar_current': 'solar/totalCurrent', 'solar_yield_today_wh': 'solar/yieldTodayWh', 'vebus_in_voltage':   'AC/IN/Voltage', 'vebus_in_frequency': 'AC/IN/Frequency', 'vebus_in_power':     'AC/IN/Power', 'vebus_out_voltage':   'AC/OUT/Voltage', 'vebus_out_frequency': 'AC/OUT/Frequency', 'vebus_out_power':     'AC/OUT/Power', 'vebus_charge_current': 'AC/CHARGER/Current', 'vebus_state_text': 'AC/CHARGER/State'}
@@ -135,13 +123,16 @@ class DbusMqttBridge:
             if value is not None:
                 topic = f"Y/{topic_suffix}"; payload = round(value, 2) if isinstance(value, (int, float)) else value
                 self.mqtt_client.publish(topic, payload, retain=True)
+
     def run(self):
         try:
+            logging.info("--> Main loop tick: Updating data and publishing...")
             self._update_data()
             self._publish_to_mqtt()
             self.mqtt_client.publish(f"R/{self.system_id}/system/0/Serial", self.system_id, retain=True)
             self.mqtt_client.publish(f"Y/serial", self.system_id, retain=True)
         except Exception:
+            logging.error("!!! UNHANDLED EXCEPTION IN MAIN LOOP:")
             logging.error(traceback.format_exc())
         return True
 
