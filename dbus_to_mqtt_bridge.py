@@ -162,7 +162,7 @@ class DbusMqttBridge:
         try:
             self.mqtt_client.loop_misc()
             while self.mqtt_client.want_write():
-                rc = self.mqtt_client.loop_write(10)
+                rc = self.mqtt_client.loop_write()
                 if rc != mqtt.MQTT_ERR_SUCCESS:
                     break
         except Exception:
