@@ -15,8 +15,37 @@ It was created as a high-performance alternative to Node-RED to reduce resource 
     *   **Solar:** Total Power and Current, Daily Energy Yield (in Wh).
     *   **MultiPlus:** AC In/Out data (Voltage, Power, Frequency), Charge Current, and Operating State (Bulk, Inverting, Passthru, etc.).
 *   **Dynamic MQTT Topics:** Creates a main topic based on the device's unique serial number, making the script portable to any Cerbo GX.
-*   **Stable and Lightweight:** Designed for very low CPU and RAM consumption.
+*   **Health Check:** Publishes `Y/online = 1` when connected, `0` on disconnect. Last Will & Testament notifies immediately if the service crashes.
+*   **Auto-Reconnect:** Automatically reconnects to the MQTT broker if the connection drops.
+*   **Graceful Shutdown:** Publishes offline state and closes cleanly on SIGTERM/SIGINT.
+*   **Stable and Lightweight:** Designed for very low CPU and RAM consumption. MQTT I/O integrated directly in the GLib main loop (no background threads, aligned with Victron's official development patterns).
 *   **Automatic Startup:** Thanks to a robust startup system, the service starts automatically on every reboot.
+
+## MQTT Topics
+
+All data is published under the `Y/` prefix with `retain=True`:
+
+| Topic | Description |
+|---|---|
+| `Y/online` | Health check: 1 = online, 0 = offline |
+| `Y/serial` | System serial number |
+| `Y/batteryMonitor/Voltage` | Battery voltage (V) |
+| `Y/batteryMonitor/Current` | Battery current (A) |
+| `Y/batteryMonitor/Power` | Battery power (W) |
+| `Y/batteryMonitor/SOC` | State of Charge (%) |
+| `Y/batteryMonitor/UsedAh` | Consumed Amp-hours |
+| `Y/batteryMonitor/VoltageAUX` | Auxiliary voltage (V) |
+| `Y/solar/totalPower` | Total solar power (W) |
+| `Y/solar/totalCurrent` | Total solar current (A) |
+| `Y/solar/yieldTodayWh` | Solar yield today (Wh) |
+| `Y/AC/IN/Voltage` | AC Input voltage (V) |
+| `Y/AC/IN/Frequency` | AC Input frequency (Hz) |
+| `Y/AC/IN/Power` | AC Input power (W) |
+| `Y/AC/OUT/Voltage` | AC Output voltage (V) |
+| `Y/AC/OUT/Frequency` | AC Output frequency (Hz) |
+| `Y/AC/OUT/Power` | AC Output power (W) |
+| `Y/AC/CHARGER/Current` | Charge current (A) |
+| `Y/AC/CHARGER/State` | MultiPlus operating state |
 
 <img width="327" height="360" alt="image" src="https://github.com/user-attachments/assets/f84de9e7-20c4-414a-8b3c-79f4327dfe51" />
 
@@ -68,6 +97,13 @@ This service uses a dedicated, robust logging system. To view the logs (either f
 tail -f /var/log/dbus-mqtt-bridge/current | tai64nlocal
 ```
 
+#### 3. Check MQTT Data
+
+Subscribe to all topics to verify data is flowing:
+```bash
+mosquitto_sub -h 127.0.0.1 -p 1883 -t "Y/#" -v
+```
+
 ## Configuration
 
 Out-of-the-box, the script is configured to connect to an MQTT broker running on the Cerbo itself (`127.0.0.1`). If your broker is on a different machine, you can easily change the address.
@@ -82,6 +118,22 @@ Out-of-the-box, the script is configured to connect to an MQTT broker running on
     ```bash
     svc -t /service/dbus-mqtt-bridge
     ```
+
+---
+
+## Changelog
+
+### v18.0 (2026-05-12)
+- **MQTT integrated into GLib main loop** — removed background thread daemon. Uses `GLib.io_add_watch` for socket I/O (aligns with official Victron development patterns).
+- **Auto-reconnect** — automatic retry every 5 seconds when MQTT connection drops.
+- **LWT (Last Will & Testament)** — broker auto-publishes `Y/online = 0` if the service crashes unexpectedly.
+- **Health check** — `Y/online` topic: `1` on connect, `0` on clean disconnect.
+- **Graceful shutdown** — SIGTERM/SIGINT publishes offline state, flushes pending writes, and closes cleanly.
+- **Active D-Bus wait** — polls every 1 second (instead of a blind `sleep(15)`) with configurable 30s timeout.
+- **Code cleanup** — formatted for readability, one statement per line.
+
+### v17.2
+- Initial release: reads battery, solar, MultiPlus data from D-Bus and publishes to MQTT.
 
 ---
 
