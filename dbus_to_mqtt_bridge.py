@@ -158,13 +158,13 @@ class DbusMqttBridge:
         return True  # keep watch alive
 
     def _on_mqtt_socket_timer(self):
-        """Chiamato ogni secondo da GLib per operazioni MQTT periodiche."""
         try:
             self.mqtt_client.loop_misc()
-            while self.mqtt_client.want_write():
-                rc = self.mqtt_client.loop_write()
-                if rc != mqtt.MQTT_ERR_SUCCESS:
-                    break
+            if self.mqtt_client.is_connected():
+                while self.mqtt_client.want_write():
+                    rc = self.mqtt_client.loop_write()
+                    if rc != mqtt.MQTT_ERR_SUCCESS:
+                        break
         except Exception:
             logging.error("MQTT timer error:\n" + traceback.format_exc())
         return True  # keep timer alive
