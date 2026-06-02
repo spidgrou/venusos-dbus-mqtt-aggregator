@@ -41,8 +41,7 @@ class DbusMqttBridge:
         self.system_id = None
         self.data = {}
         self._mqtt_connected = False
-        self._socket_watch = None
-        self._socket_timer = None
+        self._mqtt_loop_source = None
         self._shutdown = False
         self._mainloop = None
 
@@ -94,7 +93,7 @@ class DbusMqttBridge:
         )
 
     # ================================================================
-    # MQTT — INTEGRATO CON GLib MAIN LOOP
+    # MQTT — INTEGRATO CON GLib MAIN LOOP (via paho-mqtt loop())
     # ================================================================
 
     def _setup_mqtt(self):
@@ -116,62 +115,25 @@ class DbusMqttBridge:
         try:
             logging.info("Connecting to MQTT broker...")
             self.mqtt_client.connect(MQTT_BROKER_ADDRESS, MQTT_BROKER_PORT, 60)
-            self._setup_socket_handlers()
-            return False  # stop retry se chiamato da GLib timeout
+            # Avvia il loop GLib che chiama paho-mqtt loop() ogni 100ms
+            # per gestire I/O lettura, scrittura e keepalive
+            self._mqtt_loop_source = GLib.timeout_add(
+                100, self._mqtt_poll
+            )
+            return False
         except Exception as e:
             logging.error(f"MQTT connection failed: {e}, retrying in {MQTT_RETRY_SECONDS}s")
             # schedule retry
             GLib.timeout_add_seconds(MQTT_RETRY_SECONDS, self._init_mqtt)
-            return False  # GLib timeout single-shot
+            return False
 
-    def _setup_socket_handlers(self):
-        """Integra il socket MQTT nel GLib main loop (pattern Victron)."""
-        # Rimuovi watch precedente se esiste
-        if self._socket_watch is not None:
-            GLib.source_remove(self._socket_watch)
-            self._socket_watch = None
-
+    def _mqtt_poll(self):
+        """Chiamato da GLib ogni 100ms per tenere vivo il loop MQTT."""
         try:
-            sock = self.mqtt_client.socket()
-            self._socket_watch = GLib.io_add_watch(
-                sock.fileno(), GLib.IO_IN,
-                self._on_mqtt_socket_in
-            )
-        except Exception as e:
-            logging.warning(f"Cannot setup MQTT socket watch: {e}")
-            return
-
-        # Timer per loop_misc + loop_write (1 volta al secondo)
-        if self._socket_timer is None:
-            self._socket_timer = GLib.timeout_add_seconds(
-                1, self._on_mqtt_socket_timer
-            )
-
-        logging.info("MQTT socket handlers installed in GLib main loop.")
-
-    def _on_mqtt_socket_in(self, source, condition):
-        """Chiamato da GLib quando il socket MQTT ha dati da leggere."""
-        try:
-            self.mqtt_client.loop_read()
+            self.mqtt_client.loop(timeout=0)
         except Exception:
-            logging.error("MQTT loop_read error:\n" + traceback.format_exc())
-        return True  # keep watch alive
-
-    def _on_mqtt_socket_timer(self):
-        try:
-            self.mqtt_client.loop_misc()
-            # loop_write NON è guardata da is_connected() perché paho-mqtt ha
-            # bisogno di loop_write anche durante lo stato di CONNECTING
-            # (fase di handshake iniziale / riconnessione) per inviare il
-            # pacchetto CONNECT. La guardia is_connected() bloccava la
-            # connessione MQTT in modo permanente. Vedi v18.1 changelog.
-            while self.mqtt_client.want_write():
-                rc = self.mqtt_client.loop_write()
-                if rc != mqtt.MQTT_ERR_SUCCESS:
-                    break
-        except Exception:
-            logging.error("MQTT timer error:\n" + traceback.format_exc())
-        return True  # keep timer alive
+            logging.error("MQTT loop error:\n" + traceback.format_exc())
+        return True  # keep GLib timer alive
 
     # --- Callback MQTT ---
 
@@ -202,10 +164,10 @@ class DbusMqttBridge:
         except Exception:
             pass
 
-        # Rimuovi socket watch
-        if self._socket_watch is not None:
-            GLib.source_remove(self._socket_watch)
-            self._socket_watch = None
+        # Rimuovi il timer di poll
+        if self._mqtt_loop_source is not None:
+            GLib.source_remove(self._mqtt_loop_source)
+            self._mqtt_loop_source = None
 
         # Schedule riconnessione (solo se non siamo in shutdown)
         if not self._shutdown:
@@ -219,7 +181,10 @@ class DbusMqttBridge:
         try:
             logging.info("Attempting MQTT reconnect...")
             self.mqtt_client.reconnect()
-            self._setup_socket_handlers()
+            # Il timer di poll viene riavviato dopo reconnect
+            self._mqtt_loop_source = GLib.timeout_add(
+                100, self._mqtt_poll
+            )
             logging.info("MQTT reconnect successful.")
             return False  # stop retry
         except Exception as e:
@@ -227,7 +192,7 @@ class DbusMqttBridge:
             return True  # GLib ritenta
 
     # ================================================================
-    # D-BUS — (identico alla versione 17.2)
+    # D-BUS
     # ================================================================
 
     def _get_dbus_value(self, service, path, default=None):
@@ -431,9 +396,7 @@ class DbusMqttBridge:
             try:
                 # Pubblica offline state
                 self.mqtt_client.publish("Y/online", "0", retain=True)
-                self.mqtt_client.loop_misc()
-                while self.mqtt_client.want_write():
-                    self.mqtt_client.loop_write(100)
+                self.mqtt_client.loop(timeout=0.5)
             except Exception:
                 pass
 
@@ -442,10 +405,8 @@ class DbusMqttBridge:
         except Exception:
             pass
 
-        if self._socket_watch is not None:
-            GLib.source_remove(self._socket_watch)
-        if self._socket_timer is not None:
-            GLib.source_remove(self._socket_timer)
+        if self._mqtt_loop_source is not None:
+            GLib.source_remove(self._mqtt_loop_source)
 
         if self._mainloop is not None:
             self._mainloop.quit()
