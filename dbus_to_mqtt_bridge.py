@@ -28,7 +28,7 @@ class DbusMqttBridge:
     }
 
     def __init__(self):
-        logging.info("--- EXECUTING SCRIPT VERSION 18.0 ---")
+        logging.info("--- EXECUTING SCRIPT VERSION 18.1 ---")
 
         self._dbus_conn = dbus.SystemBus()
         self._dbus_paths = {
@@ -160,11 +160,15 @@ class DbusMqttBridge:
     def _on_mqtt_socket_timer(self):
         try:
             self.mqtt_client.loop_misc()
-            if self.mqtt_client.is_connected():
-                while self.mqtt_client.want_write():
-                    rc = self.mqtt_client.loop_write()
-                    if rc != mqtt.MQTT_ERR_SUCCESS:
-                        break
+            # loop_write NON è guardata da is_connected() perché paho-mqtt ha
+            # bisogno di loop_write anche durante lo stato di CONNECTING
+            # (fase di handshake iniziale / riconnessione) per inviare il
+            # pacchetto CONNECT. La guardia is_connected() bloccava la
+            # connessione MQTT in modo permanente. Vedi v18.1 changelog.
+            while self.mqtt_client.want_write():
+                rc = self.mqtt_client.loop_write()
+                if rc != mqtt.MQTT_ERR_SUCCESS:
+                    break
         except Exception:
             logging.error("MQTT timer error:\n" + traceback.format_exc())
         return True  # keep timer alive

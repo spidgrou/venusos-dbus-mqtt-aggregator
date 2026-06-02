@@ -123,6 +123,24 @@ Out-of-the-box, the script is configured to connect to an MQTT broker running on
 
 ## Changelog
 
+### v18.1 (2026-06-03)
+- **CRITICAL FIX: MQTT connection deadlock** — `loop_write()` era guardata da `is_connected()`,
+  ma paho-mqtt richiede `loop_write()` anche durante lo stato `MQTT_CS_CONNECTING` (handshake
+  iniziale e riconnessione) per inviare il pacchetto CONNECT. La guardia impediva permanentemente
+  alla connessione MQTT di completarsi, causando uno scenario di deadlock:
+  1. `connect()` creava il socket TCP e bufferizzava CONNECT
+  2. Il timer chiamava `loop_misc()` ma saltava `loop_write()` perché `is_connected()` == False
+  3. Il pacchetto CONNECT non veniva mai inviato
+  4. Il server non rispondeva CONNACK → `_on_connect` non scattava → `_mqtt_connected` restava False
+  5. Il servizio continuava a funzionare (rescan ogni 60s era attivo) ma non pubblicava mai dati
+  6. I retained message sul broker mostravano dati "vecchi" come se tutto funzionasse
+  **Effetto:** Il servizio appariva UP ma non pubblicava nuovi dati MQTT. I topic retained
+  mostravano gli ultimi valori validi (della versione v17.2) dando un falso positivo.
+  **Fix:** Rimosso il guard `is_connected()`. `loop_write()` è chiamata ogni volta che
+  `want_write()` restituisce True, indipendentemente dallo stato di connessione.
+  La funzione `loop_write()` gestisce già internamente i casi di socket assente
+  (`MQTT_ERR_NO_CONN`) e buffer vuoto (`MQTT_ERR_SUCCESS`).
+
 ### v18.0 (2026-05-12)
 - **MQTT integrated into GLib main loop** — removed background thread daemon. Uses `GLib.io_add_watch` for socket I/O (aligns with official Victron development patterns).
 - **Auto-reconnect** — automatic retry every 5 seconds when MQTT connection drops.
