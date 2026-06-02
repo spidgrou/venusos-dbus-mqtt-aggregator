@@ -41,7 +41,6 @@ class DbusMqttBridge:
         self.system_id = None
         self.data = {}
         self._mqtt_connected = False
-        self._mqtt_loop_source = None
         self._shutdown = False
         self._mainloop = None
 
@@ -115,25 +114,17 @@ class DbusMqttBridge:
         try:
             logging.info("Connecting to MQTT broker...")
             self.mqtt_client.connect(MQTT_BROKER_ADDRESS, MQTT_BROKER_PORT, 60)
-            # Avvia il loop GLib che chiama paho-mqtt loop() ogni 100ms
-            # per gestire I/O lettura, scrittura e keepalive
-            self._mqtt_loop_source = GLib.timeout_add(
-                100, self._mqtt_poll
-            )
+            # loop_start() avvia un thread dedicato che gestisce tutto l'I/O:
+            # lettura/scrittura/keepalive in automatico. È il metodo più
+            # affidabile su paho-mqtt e funziona correttamente con Venus OS.
+            self.mqtt_client.loop_start()
+            logging.info("MQTT background thread started.")
             return False
         except Exception as e:
             logging.error(f"MQTT connection failed: {e}, retrying in {MQTT_RETRY_SECONDS}s")
             # schedule retry
             GLib.timeout_add_seconds(MQTT_RETRY_SECONDS, self._init_mqtt)
             return False
-
-    def _mqtt_poll(self):
-        """Chiamato da GLib ogni 100ms per tenere vivo il loop MQTT."""
-        try:
-            self.mqtt_client.loop(timeout=0)
-        except Exception:
-            logging.error("MQTT loop error:\n" + traceback.format_exc())
-        return True  # keep GLib timer alive
 
     # --- Callback MQTT ---
 
@@ -164,10 +155,11 @@ class DbusMqttBridge:
         except Exception:
             pass
 
-        # Rimuovi il timer di poll
-        if self._mqtt_loop_source is not None:
-            GLib.source_remove(self._mqtt_loop_source)
-            self._mqtt_loop_source = None
+        # Ferma il thread di loop
+        try:
+            self.mqtt_client.loop_stop()
+        except Exception:
+            pass
 
         # Schedule riconnessione (solo se non siamo in shutdown)
         if not self._shutdown:
@@ -181,10 +173,7 @@ class DbusMqttBridge:
         try:
             logging.info("Attempting MQTT reconnect...")
             self.mqtt_client.reconnect()
-            # Il timer di poll viene riavviato dopo reconnect
-            self._mqtt_loop_source = GLib.timeout_add(
-                100, self._mqtt_poll
-            )
+            self.mqtt_client.loop_start()
             logging.info("MQTT reconnect successful.")
             return False  # stop retry
         except Exception as e:
@@ -405,8 +394,10 @@ class DbusMqttBridge:
         except Exception:
             pass
 
-        if self._mqtt_loop_source is not None:
-            GLib.source_remove(self._mqtt_loop_source)
+        try:
+            self.mqtt_client.loop_stop()
+        except Exception:
+            pass
 
         if self._mainloop is not None:
             self._mainloop.quit()
